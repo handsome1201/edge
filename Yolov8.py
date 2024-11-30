@@ -7,17 +7,17 @@ from ultralytics import YOLO
 # Function to export YOLOv8 model to TensorRT
 def export_to_tensorrt(model_path, output_dir, quant_mode):
     model = YOLO(model_path)  # Load YOLOv8 model
-    
+
     print(f"Exporting {model_path} to TensorRT with {quant_mode} quantization...")
     export_args = {
         'device': '0',
-        'optimize': True,
+        'optimize': False,  # Changed from True to False to avoid compatibility issues
         'simplify': True,
         'int8': quant_mode == 'int8',
     }
-    
+
     start_time = time.time()
-    model.export(format='engine', imgsz=640, half=True, dynamic=True, project=output_dir, **export_args)
+    model.export(format='engine', imgsz=640, half=False, dynamic=True, project=output_dir, **export_args)
     end_time = time.time()
 
     export_time = end_time - start_time
@@ -27,7 +27,7 @@ def export_to_tensorrt(model_path, output_dir, quant_mode):
 # Function to test inference speed on a sample image
 def test_inference_speed(model_path, image_path):
     model = YOLO(model_path)  # Load TensorRT model
-    
+
     print(f"Running inference on {image_path}...")
     start_time = time.time()
     results = model(image_path)
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument('--output', type=str, default='./outputs', help="Output directory for TensorRT models")
     parser.add_argument('--quant_mode', type=str, choices=['fp16', 'int8'], default='fp16', help="Quantization mode for TensorRT export")
     parser.add_argument('--image', type=str, required=True, help="Path to sample image for inference test")
-    
+
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
