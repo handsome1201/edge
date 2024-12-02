@@ -1,62 +1,57 @@
-import os
-import time
-import argparse
 import torch
 from ultralytics import YOLO
+import time
+import tensorrt as trt
+import onnx
 
-# Function to export YOLOv8 model to TensorRT
-def export_to_tensorrt(model_path, output_dir, quant_mode):
-    model = YOLO(model_path)  # Load YOLOv8 model
+# Step 1: YOLOv8 모델 로드 및 TensorRT 엔진 변환
+def export_to_tensorrt(model_path, export_path, quant_mode="fp16"):
+    """
+    YOLOv8 모델을 TensorRT 엔진으로 변환하는 함수.
 
-    print(f"Exporting {model_path} to TensorRT with {quant_mode} quantization...")
-    export_args = {
-        'device': '0',
-        'optimize': False,  # Changed from True to False to avoid compatibility issues
-        'simplify': True,
-        'int8': quant_mode == 'int8',
-    }
+    :param model_path: YOLOv8 PyTorch 모델 경로 (.pt 파일)
+    :param export_path: TensorRT 엔진 파일 저장 경로
+    :param quant_mode: 양자화 모드 ("fp16" 또는 "int8")
+    """
+    print(f"Loading YOLOv8 model from {model_path}...")
+    model = YOLO(model_path)
+    print("Exporting model to TensorRT engine...")
+    model.export(format="engine", device="0", dynamic=True, half=(quant_mode == "fp16"))
+    print(f"TensorRT engine saved at {export_path}")
 
+# Step 2: TensorRT 엔진 추론
+def run_inference(trt_model_path, input_image_path):
+    """
+    TensorRT 엔진으로 추론 시간을 측정하는 함수.
+
+    :param trt_model_path: TensorRT 엔진 경로 (.engine 파일)
+    :param input_image_path: 입력 이미지 경로
+    """
+    print(f"Loading TensorRT engine from {trt_model_path}...")
+    model = torch.load(trt_model_path)
+    print(f"Running inference on {input_image_path}...")
+
+    # 추론 시간 측정
     start_time = time.time()
-    model.export(format='engine', imgsz=640, half=False, dynamic=True, project=output_dir, **export_args)
+    results = model(input_image_path)
     end_time = time.time()
 
-    export_time = end_time - start_time
-    print(f"Export completed in {export_time:.2f} seconds.")
-    return export_time
+    print(f"Inference completed. Time taken: {end_time - start_time:.2f} seconds")
+    return results
 
-# Function to test inference speed on a sample image
-def test_inference_speed(model_path, image_path):
-    model = YOLO(model_path)  # Load TensorRT model
-
-    print(f"Running inference on {image_path}...")
-    start_time = time.time()
-    results = model(image_path)
-    end_time = time.time()
-
-    inference_time = end_time - start_time
-    print(f"Inference completed in {inference_time:.2f} seconds.")
-
-    return inference_time
-
+# Step 3: 실행
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="YOLOv8 TensorRT Export and Test")
-    parser.add_argument('--model', type=str, required=True, help="Path to YOLOv8 model (e.g., yolov8n.pt)")
-    parser.add_argument('--output', type=str, default='./outputs', help="Output directory for TensorRT models")
-    parser.add_argument('--quant_mode', type=str, choices=['fp16', 'int8'], default='fp16', help="Quantization mode for TensorRT export")
-    parser.add_argument('--image', type=str, required=True, help="Path to sample image for inference test")
+    # 모델 및 파일 경로 설정
+    yolov8_model_path = "yolov8n.pt"
+    trt_export_path = "yolov8n_fp16.engine"
+    test_image_path = "sample.jpg"
 
-    args = parser.parse_args()
+    # TensorRT 엔진 생성
+    export_to_tensorrt(yolov8_model_path, trt_export_path, quant_mode="fp16")
 
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output, exist_ok=True)
+    # 추론 실행
+    results = run_inference(trt_export_path, test_image_path)
 
-    # Export model to TensorRT
-    export_time = export_to_tensorrt(args.model, args.output, args.quant_mode)
-
-    # Test inference speed
-    tensorrt_model_path = os.path.join(args.output, 'engine', os.path.basename(args.model).replace('.pt', '.engine'))
-    inference_time = test_inference_speed(tensorrt_model_path, args.image)
-
-    print("\nSummary:")
-    print(f"Model exported to TensorRT in {export_time:.2f} seconds.")
-    print(f"Inference time: {inference_time:.2f} seconds.")
+    # 결과 출력
+    print("Inference Results:")
+    print(results)
